@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ByteNuke - P2P Ephemeral File Sharing</title>
+
+    <link rel="stylesheet" href="styles.css">
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js';
+        import { getFirestore } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js';
+        window.firebase = { initializeApp, getFirestore };
+    </script>
+
+    <!-- PDF.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+    <!-- Mammoth.js -->
+    <script src="https://unpkg.com/mammoth@1.4.21/mammoth.browser.min.js"></script>
+
+ 
+</head>
+
+<body>
+    <div id="app">
+        <h1>ByteNuke</h1>
+        <p>
+            P2P Ephemeral File Sharing  
+            <br>
+            <small>[This project is under active development. Expect bugs and improvements]</small>
+        </p>
+
+        <!-- MODE SELECTION -->
+        <div id="mode-selection">
+            <button id="try-host-btn">Try host a file</button>
+            <button id="receiver-btn">Receive a File</button>
+        </div>
+
+        <!-- COMPATIBILITY WARNING -->
+        <p id="compat-warning" class="hidden">
+            ⚠️ Your browser may not support file sharing features.
+        </p>
+
+        <!-- HOST PANEL -->
+        <div id="host-panel" class="hidden">
+            <h2>Host Mode</h2>
+
+            <div id="room-section" class="hidden">
+                <p>Room ID: <span id="room-id"></span></p>
+                <button id="copy-room-id-btn">Copy Room ID</button>
+                <span id="copy-status"></span>
+            </div>
+
+            <div id="file-section" class="hidden">
+                <button id="select-file-btn">Select File</button>
+                <p>File: <span id="file-name"></span></p>
+                <p>Size: <span id="file-size"></span></p>
+            </div>
+
+            <div id="timer-section" class="hidden">
+                <label for="timer-input">Online time (minutes, max 10):</label>
+                <input type="number" id="timer-input" min="1" max="10" value="5">
+            </div>
+
+            <button id="host-now-btn" class="hidden">Host Now</button>
+            <button id="end-session-btn" class="hidden">End Session</button>
+
+            <div id="transfer-status" class="hidden">
+                <p>
+                    Status: 
+                    <span id="status-text">Online for </span>
+                    <span id="remaining-time"></span> | Waiting for receiver...
+                </p>
+                <progress id="progress-bar" value="0" max="100"></progress>
+            </div>
+
+            <p id="error-box" class="hidden"></p>
+            <p id="loading-text" class="hidden">Connecting...</p>
+        </div>
+
+        <!-- RECEIVER PANEL -->
+        <div id="receiver-panel" class="hidden">
+            <h2>Receiver Mode</h2>
+
+            <input 
+                type="text" 
+                id="room-id-input" 
+                placeholder="Enter Room ID" 
+                maxlength="9"
+            >
+
+            <button id="join-room-btn">Join Room</button>
+
+            <div id="preview-panel" class="hidden">
+                <h3>Preview</h3>
+                <div id="preview-content"></div>
+                <button id="download-btn">Download File</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ONLY ONE SCRIPT -->
+    <script type="module" src="app.js"></script>
+
+</body>
+</html>
