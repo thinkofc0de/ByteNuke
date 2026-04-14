@@ -41,10 +41,6 @@ export class Host {
 }
 
     async startHosting() {
-    await setDoc(this.signaling.roomRef, {
-    status: "active"
-}, { merge: true });
-    console.log("🚀 Hosting started");
 
     this.pc = new RTCPeerConnection({
         iceServers: [
@@ -71,7 +67,7 @@ export class Host {
     // ✅ ICE listener
     this.signaling.onIceCandidate((candidate) => {
         if (this.remoteDescSet) {
-            this.pc.addIceCandidate(candidate);
+            this.pc.addIceCandidate(new RTCIceCandidate(candidate));
         } else {
             this.iceQueue.push(candidate);
         }
@@ -80,11 +76,16 @@ export class Host {
     // ✅ Create offer ONLY NOW
     const offer = await this.pc.createOffer();
     await this.pc.setLocalDescription(offer);
-
+    // Send Offer
     await this.signaling.sendOffer({
         type: offer.type,
         sdp: offer.sdp
     });
+    // Active 
+     await setDoc(this.signaling.roomRef, {
+    status: "active"
+}, { merge: true });
+    console.log("🚀 Hosting started");
 }
 
     setupPeerConnection() {
@@ -120,11 +121,31 @@ export class Host {
         };
     }
 
+    waitForChannelOpen() {
+    return new Promise(resolve => {
+        if (this.dataChannel.readyState === "open") {
+            resolve();
+        } else {
+            const checkOpen = () => {
+                if (this.dataChannel.readyState === "open") {
+                    console.log("🔓 DataChannel ready");
+
+                    this.dataChannel.removeEventListener('open', checkOpen);
+                    resolve();
+                }
+            };
+
+            this.dataChannel.addEventListener('open', checkOpen);
+        }
+    });
+}
+
     // ✅ FILE SELECT
     async selectFile() {
     try {
         const handles = await window.showOpenFilePicker({ multiple: true });
-
+        this.files = [];
+        this.totalSize = 0;
         for (const handle of handles) {
             const file = await handle.getFile();
 
@@ -157,60 +178,81 @@ export class Host {
     }
 }
 
-sendSingleFile(file) {
-    return new Promise((resolve) => {
-        const chunkSize = 16 * 1024;
-        const reader = new FileReader();
-        let offset = 0;
 
-        reader.onload = (e) => {
-            this.dataChannel.send(e.target.result);
-            offset += e.target.result.byteLength;
-
-            if (offset < file.size) {
-                readSlice(offset);
-            } else {
-                this.dataChannel.send(JSON.stringify({ type: "complete" }));
-                resolve();
-            }
-        };
-
-        const readSlice = (o) => {
-            const slice = file.slice(o, o + chunkSize);
-            reader.readAsArrayBuffer(slice);
-        };
-
-        readSlice(0);
-    });
-}
     // ✅ FILE TRANSFER
-startTransfer() {
-    if (!this.files.length || !this.dataChannel) return;
+async startTransfer() {
+    if (!this.files.length || !this.dataChannel || this.dataChannel.readyState !== "open") {
+    console.log("⚠️ Cannot start transfer yet");
+    return;
+}
 
-    console.log("📤 Starting multi-file transfer");
+    console.log("📤 Starting sequential transfer");
 
     for (const file of this.files) {
 
+        // ✅ Send metadata
         this.dataChannel.send(JSON.stringify({
             type: "fileInfo",
             name: file.name,
             size: file.size
         }));
 
-        const reader = new FileReader();
+        // ✅ WAIT for file to fully send
+        await new Promise((resolve) => {
+            const reader = new FileReader();
 
-        reader.onload = () => {
-            this.dataChannel.send(reader.result);
+           reader.onload = async () => {
 
-            this.dataChannel.send(JSON.stringify({
-                type: "complete"
-            }));
-        };
+    // 🔒 ALWAYS wait before sending
+    await this.waitForChannelOpen();
 
-        reader.readAsArrayBuffer(file);
+    // 🔒 Buffer control
+    while (this.dataChannel.bufferedAmount > 256000) {
+        await new Promise(r => setTimeout(r, 50));
     }
-} // ✅ CLOSE FUNCTION PROPERLY
 
+    try {
+        this.dataChannel.send(reader.result);
+    } catch (err) {
+        console.error("❌ Send failed, retrying...", err);
+
+        await this.waitForChannelOpen();
+        this.dataChannel.send(reader.result);
+    }
+
+    // 🔒 WAIT again before sending "complete"
+    await this.waitForChannelOpen();
+
+    while (this.dataChannel.bufferedAmount > 256000) {
+        await new Promise(r => setTimeout(r, 50));
+    }
+
+    this.dataChannel.send(JSON.stringify({
+        type: "complete"
+    }));
+
+    console.log("✅ Sent:", file.name);
+
+    resolve();
+};
+            reader.readAsArrayBuffer(file);
+        });
+    }
+
+    console.log("🎉 All files sent properly");
+    this.dataChannel.send(JSON.stringify({
+    type: "allComplete"
+}));
+
+    setTimeout(() => {
+    console.log("🛑 Closing after delay...");
+    this.cleanup();
+}, 5000); // wait 5 seconds
+this.dataChannel.send(JSON.stringify({
+    type: "allComplete"
+}));
+
+}
 
 
 

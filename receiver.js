@@ -12,7 +12,8 @@ export class Receiver {
 
         this.currentChunks = [];
         this.currentFileName = '';
-        this.receivedFiles = [];
+        this.receivedFiles = []; // ✅ store all files
+        this.currentFileChunks = []; // ✅ temp buffer
         this.fileSize = 0;
         this.receivedSize = 0;
 
@@ -131,6 +132,30 @@ console.log("🟢 Receiver joined ACTIVE room");
         };
     }
 
+    renderFileList() {
+    const panel = document.getElementById('file-list-panel');
+const container = document.getElementById('file-list');
+    if (!panel || !container) return;
+
+    panel.classList.remove('hidden');
+    container.innerHTML = '';
+
+    this.receivedFiles.forEach((file, index) => {
+
+        const item = document.createElement('div');
+        item.className = "file-item";
+
+        item.innerHTML = `
+            <div class="file-name">${file.name}</div>
+            <div class="file-meta">${(file.blob.size / 1024).toFixed(2)} KB</div>
+        `;
+
+        item.onclick = () => this.openFileMenu(index);
+
+        container.appendChild(item);
+    });
+}
+
     // ✅ HANDLE FILE DATA
    handleIncomingData(data) {
 
@@ -140,31 +165,167 @@ console.log("🟢 Receiver joined ACTIVE room");
         if (msg.type === "fileInfo") {
             console.log("📁 Receiving:", msg.name);
 
-            // ✅ RESET for new file
-            this.fileChunks = [];
+            this.currentFileChunks = []; // reset buffer
             this.fileName = msg.name;
-            this.fileSize = msg.size;
-
-            // ✅ SHOW NAME IN UI
-            const preview = document.getElementById('preview-content');
-            if (preview) {
-                const p = document.createElement('p');
-                p.textContent = `Receiving: ${this.fileName}`;
-                preview.appendChild(p);
-            }
         }
 
         if (msg.type === "complete") {
-            console.log("✅ File received:", this.fileName);
+    const blob = new Blob(this.currentFileChunks);
 
-            this.assembleFile();
-        }
+    this.receivedFiles.push({
+        name: this.fileName,
+        blob: blob
+    });
+
+    this.renderFileList(); // 🔥 IMPORTANT
+}
+if (msg.type === "allComplete") {
+    console.log("🎉 All files received");
+
+    // (Optional) show UI message
+    alert("All files received successfully!");
+}
 
     } else {
-        // ✅ Binary chunk
-        this.fileChunks.push(data);
+        this.currentFileChunks.push(data);
     }
 }
+
+openFileMenu(index) {
+    const file = this.receivedFiles[index];
+
+    const modal = document.createElement('div');
+    modal.className = "modal";
+
+    modal.innerHTML = `
+        <div class="modal-content">
+            <h3>${file.name}</h3>
+
+            <div id="modal-actions">
+                <button id="preview-btn">Preview</button>
+                <button id="download-btn">Download</button>
+                <button id="close-btn">Close</button>
+            </div>
+
+            <div id="modal-preview" class="hidden"></div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const previewBox = modal.querySelector('#modal-preview');
+    const actions = modal.querySelector('#modal-actions');
+
+    // ✅ PREVIEW
+    modal.querySelector('#preview-btn').onclick = () => {
+        actions.style.display = "none";
+        previewBox.classList.remove('hidden');
+
+        this.previewInsideModal(file.blob, file.name, previewBox, actions);
+    };
+
+    // ✅ DOWNLOAD
+    modal.querySelector('#download-btn').onclick = () => {
+        this.downloadSpecificFile(file);
+    };
+
+    // ✅ CLOSE
+    modal.querySelector('#close-btn').onclick = () => {
+        modal.remove();
+    };
+}
+
+previewInsideModal(blob, fileName, previewBox, actions) {
+    previewBox.innerHTML = '';
+
+    const extension = fileName.split('.').pop().toLowerCase();
+
+    try {
+
+        // 🖼️ IMAGE
+        if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension)) {
+            const img = document.createElement('img');
+            img.src = URL.createObjectURL(blob);
+            img.style.maxWidth = "100%";
+            img.style.maxHeight = "70vh";
+            img.style.objectFit = "contain";
+            previewBox.appendChild(img);
+        }
+
+        // 🎥 VIDEO
+        else if (['mp4', 'webm', 'ogg'].includes(extension)) {
+            const video = document.createElement('video');
+            video.src = URL.createObjectURL(blob);
+            video.controls = true;
+            video.style.maxWidth = "100%";
+            video.style.maxHeight = "70vh";
+            previewBox.appendChild(video);
+        }
+
+        // 📄 PDF
+        else if (extension === 'pdf') {
+            const iframe = document.createElement('iframe');
+            iframe.src = URL.createObjectURL(blob);
+            iframe.style.width = "100%";
+            iframe.style.height = "70vh";
+            iframe.style.border = "none";
+            previewBox.appendChild(iframe);
+        }
+
+        // 📜 TEXT
+        else if (['txt', 'js', 'py', 'html', 'css'].includes(extension)) {
+            blob.text().then(text => {
+                const pre = document.createElement('pre');
+                pre.textContent = text;
+                pre.style.whiteSpace = "pre-wrap";
+                pre.style.wordBreak = "break-word";
+                previewBox.appendChild(pre);
+            });
+        }
+
+        // ❌ UNSUPPORTED
+        else {
+            previewBox.innerHTML = `
+                <div style="color:red; text-align:center; font-size:18px;">
+                    ⚠️ Preview not supported
+                </div>
+            `;
+        }
+
+    } catch (err) {
+        console.error("Preview error:", err);
+        previewBox.innerHTML = `
+            <div style="color:red; text-align:center; font-size:18px;">
+                ⚠️ Preview failed
+            </div>
+        `;
+    }
+
+    // 🔥 ADD BACK BUTTON INSIDE MODAL
+    const backBtn = document.createElement('button');
+    backBtn.textContent = "⬅ Back";
+    backBtn.style.marginTop = "10px";
+
+    backBtn.onclick = () => {
+        previewBox.classList.add('hidden');
+        actions.style.display = "block";
+    };
+
+    previewBox.appendChild(backBtn);
+}sss
+ 
+
+downloadSpecificFile(file) {
+    const url = URL.createObjectURL(file.blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = file.name;
+    a.click();
+
+    URL.revokeObjectURL(url);
+}
+
 showAllFiles() {
     const preview = document.getElementById('preview-content');
     preview.innerHTML = '';
@@ -188,75 +349,4 @@ showAllFiles() {
     });
 }
 
-    assembleFile() {
-    const blob = new Blob(this.fileChunks);
-
-    console.log("📦 Assembling:", this.fileName, blob.size);
-
-    this.previewFile(blob, this.fileName);
-}
-
-    previewFile(blob, fileName) {
-        const previewContent = document.getElementById('preview-content');
-        if (!previewContent) return;
-
-        previewContent.innerHTML = '';
-
-        const extension = fileName.split('.').pop().toLowerCase();
-
-        if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension)) {
-            const img = document.createElement('img');
-            img.src = URL.createObjectURL(blob);
-            previewContent.appendChild(img);
-
-        } else if (['mp4', 'webm', 'ogg'].includes(extension)) {
-            const video = document.createElement('video');
-            video.src = URL.createObjectURL(blob);
-            video.controls = true;
-            previewContent.appendChild(video);
-
-        } else if (extension === 'pdf') {
-            const iframe = document.createElement('iframe');
-            iframe.src = URL.createObjectURL(blob);
-            iframe.style.width = "100%";
-            iframe.style.height = "500px";
-            previewContent.appendChild(iframe);
-
-        } else if (['txt', 'js', 'py', 'html', 'css'].includes(extension)) {
-            blob.text().then(text => {
-                const pre = document.createElement('pre');
-                pre.textContent = text;
-                previewContent.appendChild(pre);
-            });
-
-        } else {
-            const p = document.createElement('p');
-            p.textContent = `File received: ${fileName}`;
-            previewContent.appendChild(p);
-        }
     }
-
-    downloadFile() {
-    if (!this.fileChunks.length) {
-        console.warn("⚠️ No file to download");
-        return;
-    }
-
-    const blob = new Blob(this.fileChunks);
-        const url = URL.createObjectURL(blob);
-
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = this.fileName || "download";
-        a.click();
-
-        URL.revokeObjectURL(url);
-    }
-
-    async cleanup() {
-        console.log("🧹 Receiver cleanup");
-
-        if (this.pc) this.pc.close();
-        if (this.signaling) await this.signaling.cleanup();
-    }
-}

@@ -33,6 +33,14 @@ function hideLoading() {
     if (el) el.classList.add('hidden');
 }
 
+function showPreviewError(container) {
+    container.innerHTML = `
+        <div style="color:red; font-size:18px; text-align:center;">
+            ⚠️ Preview not supported
+        </div>
+    `;
+}
+
 // --------------------
 // HOST MODE
 // --------------------
@@ -157,6 +165,7 @@ document.getElementById('receiver-btn').addEventListener('click', () => {
     document.getElementById('receiver-panel').classList.remove('hidden');
 });
 
+
 // --------------------
 // JOIN ROOM
 // --------------------
@@ -175,9 +184,12 @@ document.getElementById('join-room-btn').addEventListener('click', async () => {
 
         showLoading("Joining room...");
         await receiver.joinRoom(roomId);
-        hideLoading();
+hideLoading();
 
-        document.getElementById('preview-panel').classList.remove('hidden');
+// ✅ SHOW FILE LIST PANEL
+document.getElementById('file-list-panel').classList.remove('hidden');
+
+       
 
     } catch (err) {
         console.error("❌ Join failed:", err);
@@ -189,11 +201,7 @@ document.getElementById('join-room-btn').addEventListener('click', async () => {
 // --------------------
 // DOWNLOAD
 // --------------------
-document.getElementById('download-btn').addEventListener('click', () => {
-    if (receiver) {
-        receiver.downloadFile();
-    }
-});
+
 
 // --------------------
 // CLEANUP
