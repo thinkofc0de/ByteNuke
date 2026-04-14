@@ -206,6 +206,14 @@ document.getElementById('file-list-panel').classList.remove('hidden');
         showError("Failed to join room");
     }
 });
+const roomInput = document.getElementById('room-id-input');
+
+roomInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        document.getElementById('join-room-btn').click();
+    }
+});
 
 // --------------------
 // DOWNLOAD
