@@ -76,6 +76,10 @@ document.getElementById('try-host-btn').addEventListener('click', async () => {
 // FILE SELECT
 // --------------------
 document.getElementById('select-file-btn').addEventListener('click', async () => {
+    if (host && host.pc) {
+    showError("Session already active. Cannot add/modify files.");
+    return;
+}
     if (!host) {
         showError("Host not initialized");
         return;
@@ -85,14 +89,16 @@ document.getElementById('select-file-btn').addEventListener('click', async () =>
         const fileInfo = await host.selectFile();
 
         if (fileInfo) {
-            console.log("📁 File selected:", fileInfo);
+    console.log("📁 File selected:", fileInfo);
 
-            document.getElementById('file-name').textContent = fileInfo.name;
-            document.getElementById('file-size').textContent =
-                `${(fileInfo.size / 1024 / 1024).toFixed(2)} MB`;
+    document.getElementById('file-size').textContent =
+        `${(fileInfo.size / 1024 / 1024).toFixed(2)} MB`;
 
-            document.getElementById('host-now-btn').classList.remove('hidden');
-        }
+    // 🔥 ONLY show button if session NOT started
+    if (!host.pc) {
+        document.getElementById('host-now-btn').classList.remove('hidden');
+    }
+}
 
     } catch (err) {
         console.error("❌ File select error:", err);
@@ -104,6 +110,7 @@ document.getElementById('select-file-btn').addEventListener('click', async () =>
 // START HOSTING
 // --------------------
 document.getElementById('host-now-btn').addEventListener('click', async () => {
+
     if (!host) return;
 
     await host.startHosting();
@@ -122,6 +129,8 @@ document.getElementById('host-now-btn').addEventListener('click', async () => {
         document.getElementById('host-now-btn').classList.add('hidden');
         document.getElementById('transfer-status').classList.remove('hidden');
         document.getElementById('end-session-btn').classList.remove('hidden');
+        document.getElementById('select-file-btn').disabled = true;
+        document.getElementById('select-file-btn').textContent = "Session Active";
 
         document.getElementById('status-text').textContent = "Online for ";
 

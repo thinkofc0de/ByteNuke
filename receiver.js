@@ -170,9 +170,17 @@ const container = document.getElementById('file-list');
         }
 
         if (msg.type === "complete") {
-    const blob = new Blob(this.currentFileChunks);
+const extension = this.fileName.split('.').pop().toLowerCase();
 
-    this.receivedFiles.push({
+let mimeType = "application/octet-stream";
+
+if (extension === "pdf") mimeType = "application/pdf";
+else if (["jpg","jpeg"].includes(extension)) mimeType = "image/jpeg";
+else if (extension === "png") mimeType = "image/png";
+else if (extension === "mp4") mimeType = "video/mp4";
+else if (extension === "txt") mimeType = "text/plain";
+
+const blob = new Blob(this.currentFileChunks, { type: mimeType });    this.receivedFiles.push({
         name: this.fileName,
         blob: blob
     });
@@ -187,8 +195,12 @@ if (msg.type === "allComplete") {
 }
 
     } else {
+    if (data instanceof ArrayBuffer) {
         this.currentFileChunks.push(data);
+    } else {
+        console.warn("⚠️ Non-binary chunk received, skipping");
     }
+}
 }
 
 openFileMenu(index) {
@@ -231,15 +243,17 @@ openFileMenu(index) {
 
     // ✅ CLOSE
     modal.querySelector('#close-btn').onclick = () => {
+        
         modal.remove();
     };
 }
 
 previewInsideModal(blob, fileName, previewBox, actions) {
-    previewBox.innerHTML = '';
+   previewBox.innerHTML = '';
 
-    const extension = fileName.split('.').pop().toLowerCase();
 
+const extension = fileName.split('.').pop().trim().toLowerCase();
+console.log("EXT:", extension);
     try {
 
         // 🖼️ IMAGE
@@ -263,14 +277,17 @@ previewInsideModal(blob, fileName, previewBox, actions) {
         }
 
         // 📄 PDF
-        else if (extension === 'pdf') {
-            const iframe = document.createElement('iframe');
-            iframe.src = URL.createObjectURL(blob);
-            iframe.style.width = "100%";
-            iframe.style.height = "70vh";
-            iframe.style.border = "none";
-            previewBox.appendChild(iframe);
-        }
+       else if (extension === 'pdf') {
+    const url = URL.createObjectURL(blob);
+
+    const iframe = document.createElement('iframe');
+    iframe.src = url;
+    iframe.style.width = "100%";
+    iframe.style.height = "80vh";
+    iframe.style.border = "none";
+    
+    previewBox.appendChild(iframe);
+}
 
         // 📜 TEXT
         else if (['txt', 'js', 'py', 'html', 'css'].includes(extension)) {
@@ -312,7 +329,7 @@ previewInsideModal(blob, fileName, previewBox, actions) {
     };
 
     previewBox.appendChild(backBtn);
-}sss
+}
  
 
 downloadSpecificFile(file) {

@@ -141,11 +141,16 @@ export class Host {
 }
 
     // ✅ FILE SELECT
-    async selectFile() {
-    try {
+   async selectFile() {
+    try {this.files = [];
+this.totalSize = 0;
+if (this.pc) {
+    alert("⚠️ Session already started. Cannot add more files.");
+    return;
+}
+
         const handles = await window.showOpenFilePicker({ multiple: true });
-        this.files = [];
-        this.totalSize = 0;
+
         for (const handle of handles) {
             const file = await handle.getFile();
 
@@ -155,21 +160,10 @@ export class Host {
             console.log("📁 File added:", file.name);
         }
 
-        // ✅ UI UPDATE
-        const fileNameElem = document.getElementById('file-name');
-        const fileSizeElem = document.getElementById('file-size');
-
-        if (fileNameElem) {
-            fileNameElem.textContent = this.files.map(f => f.name).join(", ");
-        }
-
-        if (fileSizeElem) {
-            fileSizeElem.textContent =
-                `${(this.totalSize / 1024 / 1024).toFixed(2)} MB`;
-        }
+        this.renderFileList(); // 🔥 NEW
 
         return {
-            name: this.files.map(f => f.name).join(", "),
+            name: `${this.files.length} files selected`,
             size: this.totalSize
         };
 
@@ -177,81 +171,152 @@ export class Host {
         console.error('❌ File selection failed:', err);
     }
 }
+// Rendering list
+renderFileList() {
+    const container = document.getElementById('file-name');
 
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    this.files.forEach((file, index) => {
+        const div = document.createElement('div');
+        div.className = "file-item";
+        div.textContent = file.name;
+
+        div.onclick = () => this.openFileMenu(index);
+
+        container.appendChild(div);
+    });
+
+    // update size
+    const sizeEl = document.getElementById('file-size');
+    if (sizeEl) {
+        sizeEl.textContent =
+            `${(this.totalSize / 1024 / 1024).toFixed(2)} MB`;
+    }
+}
+
+openFileMenu(index) {
+    const file = this.files[index];
+
+    const modal = document.createElement('div');
+    modal.className = "modal";
+
+   const removeBtn = document.createElement('button');
+removeBtn.textContent = "❌ Remove";
+
+const closeBtn = document.createElement('button');
+closeBtn.textContent = "Close";
+
+removeBtn.onclick = () => {
+    this.removeFile(index);
+    modal.remove();
+};
+
+closeBtn.onclick = () => modal.remove();
+
+const box = document.createElement('div');
+box.className = "modal-content";
+
+box.appendChild(document.createTextNode(file.name));
+box.appendChild(removeBtn);
+box.appendChild(closeBtn);
+
+modal.appendChild(box);
+
+    document.body.appendChild(modal);
+
+    
+}
+removeFile(index) {
+    const removed = this.files.splice(index, 1);
+
+    if (removed.length) {
+        this.totalSize -= removed[0].size;
+    }
+
+    console.log("🗑 Removed:", removed[0].name);
+
+    this.renderFileList();
+}
 
     // ✅ FILE TRANSFER
 async startTransfer() {
     if (!this.files.length || !this.dataChannel || this.dataChannel.readyState !== "open") {
-    console.log("⚠️ Cannot start transfer yet");
+    console.log("⚠️ Cannot start transfer");
     return;
 }
 
-    console.log("📤 Starting sequential transfer");
+    console.log("📤 Starting chunked transfer");
+
+    const chunkSize = 64 * 1024; // 16KB
 
     for (const file of this.files) {
 
-        // ✅ Send metadata
-        this.dataChannel.send(JSON.stringify({
+        // 🔹 Send metadata
+        await this.safeSend(JSON.stringify({
             type: "fileInfo",
             name: file.name,
             size: file.size
         }));
 
-        // ✅ WAIT for file to fully send
-        await new Promise((resolve) => {
-            const reader = new FileReader();
+        let offset = 0;
 
-           reader.onload = async () => {
+        while (offset < file.size) {
 
-    // 🔒 ALWAYS wait before sending
-    await this.waitForChannelOpen();
+            const slice = file.slice(offset, offset + chunkSize);
+            const buffer = await slice.arrayBuffer();
 
-    // 🔒 Buffer control
+            if (this.dataChannel.readyState !== "open") {
+    console.log("❌ Channel closed mid-transfer");
+    return;
+}
+
+await this.safeSend(buffer);
+
+            offset += chunkSize;
+
+            // optional debug
+            // console.log(`📦 ${file.name}: ${Math.floor((offset/file.size)*100)}%`);
+        }
+
+        // 🔹 File complete
+        await this.safeSend(JSON.stringify({
+            type: "complete"
+        }));
+
+        console.log("✅ Sent:", file.name);
+    }
+
+    console.log("🎉 All files sent (chunked)");
+  
+  
+    
+}
+
+// safe send
+
+async safeSend(data) {
+
+    // ✅ WAIT until open (NO recursion)
+    let retries = 0;
+
+while (this.dataChannel.readyState !== "open") {
+    if (retries++ > 100) {
+        console.log("❌ Channel never opened");
+        return;
+    }
+    await new Promise(r => setTimeout(r, 50));
+}
+
+    // ✅ WAIT for buffer to drain
     while (this.dataChannel.bufferedAmount > 256000) {
-        await new Promise(r => setTimeout(r, 50));
+        await new Promise(r => setTimeout(r, 10));
     }
 
-    try {
-        this.dataChannel.send(reader.result);
-    } catch (err) {
-        console.error("❌ Send failed, retrying...", err);
-
-        await this.waitForChannelOpen();
-        this.dataChannel.send(reader.result);
-    }
-
-    // 🔒 WAIT again before sending "complete"
-    await this.waitForChannelOpen();
-
-    while (this.dataChannel.bufferedAmount > 256000) {
-        await new Promise(r => setTimeout(r, 50));
-    }
-
-    this.dataChannel.send(JSON.stringify({
-        type: "complete"
-    }));
-
-    console.log("✅ Sent:", file.name);
-
-    resolve();
-};
-            reader.readAsArrayBuffer(file);
-        });
-    }
-
-    console.log("🎉 All files sent properly");
-    this.dataChannel.send(JSON.stringify({
-    type: "allComplete"
-}));
-
-    setTimeout(() => {
-    console.log("🛑 Closing after delay...");
-    this.cleanup();
-}, 5000); // wait 5 seconds
-this.dataChannel.send(JSON.stringify({
-    type: "allComplete"
-}));
-
+    // ✅ SEND
+    this.dataChannel.send(data);
 }
 
 
